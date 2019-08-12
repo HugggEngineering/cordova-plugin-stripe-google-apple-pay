@@ -2,6 +2,7 @@ package stripegoogleapplepay;
 
 import android.app.Activity;
 import android.content.Intent;
+import android.util.Log;
 
 import com.google.android.gms.common.api.ApiException;
 import com.google.android.gms.common.api.Status;
@@ -39,6 +40,8 @@ public class StripeGoogleApplePay extends CordovaPlugin {
 
   private static final int LOAD_PAYMENT_DATA_REQUEST_CODE = 42;
 
+  private final String TAG = "StripeGoogleApplePay";
+
   private PaymentsClient paymentsClient = null;
   private CallbackContext callback;
   private int environment;
@@ -58,7 +61,7 @@ public class StripeGoogleApplePay extends CordovaPlugin {
     }
 
     // These actions require the key to be already set
-    if (this.isInitialised()) {
+    if (!this.isInitialised()) {
       this.callback.error("SGAP not initialised. Please run sgap.setKey(STRIPE_PUBLISHABLE).");
     }
 
@@ -79,10 +82,7 @@ public class StripeGoogleApplePay extends CordovaPlugin {
         switch (resultCode) {
           case Activity.RESULT_OK:
             PaymentData paymentData = PaymentData.getFromIntent(data);
-            // You can get some data on the user's card, such as the brand and last 4 digits
-            CardInfo info = paymentData.getCardInfo();
-            // You can also pull the user address from the PaymentData object.
-            UserAddress address = paymentData.getShippingAddress();
+
             // This is the raw JSON string version of your Stripe token.
             String rawToken = paymentData.getPaymentMethodToken().getToken();
 
@@ -102,12 +102,15 @@ public class StripeGoogleApplePay extends CordovaPlugin {
             break;
           case AutoResolveHelper.RESULT_ERROR:
             Status status = AutoResolveHelper.getStatusFromIntent(data);
-            // Log the status for debugging
             // Generally there is no need to show an error to
             // the user as the Google Payment API will do that
+            // however we need to let the caller clean up.
+            Log.d(TAG, status.getStatusMessage());
+            this.callback.error("Payment error");
             break;
           default:
-            // Do nothing.
+            // Assume error and let the caller clean up.
+            this.callback.error("Unknown status");
         }
         break; // Breaks the case LOAD_PAYMENT_DATA_REQUEST_CODE
       // Handle any other startActivityForResult calls you may have made.
@@ -117,15 +120,18 @@ public class StripeGoogleApplePay extends CordovaPlugin {
   }
 
   private boolean isInitialised() {
-    return this.paymentsClient == null;
+    return this.paymentsClient != null;
   }
 
   private void setKey(String key) {
     if (key.contains("pk_test")) {
+      Log.d(TAG, "Using ENVIRONMENT_TEST");
       this.environment = WalletConstants.ENVIRONMENT_TEST;
     } else if (key.contains("pk_live")) {
+      Log.d(TAG, "Using ENVIRONMENT_PRODUCTION");
       this.environment = WalletConstants.ENVIRONMENT_PRODUCTION;
     } else {
+      Log.d(TAG, "Invalid Stripe key. Cannot accept payments.");
       this.callback.error("Invalid key");
       return;
     }
